@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>25. The Gulliver's Travel</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07111f;color:#fff;font-family:Arial,Helvetica,sans-serif}
+#game{position:fixed;inset:0}
+canvas{display:block}
+#hud{position:fixed;inset:0;pointer-events:none}
+.panel{background:rgba(5,10,20,.82);border:1px solid rgba(255,255,255,.18);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);backdrop-filter:blur(7px)}
+#title{position:absolute;top:14px;left:50%;transform:translateX(-50%);padding:10px 18px;text-align:center}
+#title b{font-size:20px} #title small{display:block;color:#a9c7ff;margin-top:3px}
+#stats{position:absolute;top:14px;left:14px;width:250px;padding:12px}
+.bar{height:15px;background:#202b3b;border-radius:10px;overflow:hidden;margin:4px 0 8px}
+.fill{height:100%;width:100%;transition:.2s}
+#hpFill{background:#e74c3c} #xpFill{background:#7d5cff}
+.label{font-size:12px;color:#b8c4d8}
+#quest{position:absolute;top:100px;right:14px;width:290px;padding:12px}
+#quest h3{margin:0 0 7px;color:#ffd66b}
+#quest p{margin:5px 0;font-size:13px;line-height:1.35}
+#controls{position:absolute;bottom:14px;left:14px;padding:10px;font-size:12px;color:#cbd6e8;max-width:380px}
+#buttons{position:absolute;bottom:14px;right:14px;display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;pointer-events:auto;max-width:430px}
+button{border:1px solid #53657f;background:#152238;color:white;padding:9px 12px;border-radius:9px;cursor:pointer;font-weight:bold}
+button:hover{background:#213554}
+#message{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);min-width:280px;max-width:650px;padding:11px 15px;text-align:center;opacity:0;transition:.25s}
+#crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:24px;color:rgba(255,255,255,.75)}
+#dialogue{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);width:min(720px,92vw);padding:16px;display:none;pointer-events:auto}
+#dialogue h3{margin:0 0 8px;color:#ffd66b}
+#dialogue p{margin:0;line-height:1.5;white-space:pre-wrap}
+#story,#inventory,#skills{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(900px,94vw);max-height:82vh;overflow:auto;padding:20px;display:none;pointer-events:auto}
+#story h2,#inventory h2,#skills h2{margin-top:0;color:#ffd66b}
+#storyText{white-space:pre-wrap;line-height:1.55;color:#e9eef8}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.item,.skill{padding:12px;background:#101b2d;border:1px solid #2d405d;border-radius:10px}
+.item b,.skill b{display:block;margin-bottom:6px}
+.skill button{margin-top:7px}
+#notice{position:absolute;top:60px;left:50%;transform:translateX(-50%);padding:7px 12px;font-size:12px;color:#bcd3ff}
+.enemyTag{position:absolute;transform:translate(-50%,-100%);padding:4px 7px;background:rgba(80,0,0,.75);border-radius:7px;font-size:11px;pointer-events:none}
+#minimap{position:absolute;top:14px;right:320px;width:150px;height:150px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.35);background:rgba(0,0,0,.35)}
+#minimap canvas{width:100%;height:100%}
+@media(max-width:900px){#minimap{display:none}#quest{top:80px;width:245px}#stats{width:210px}.title{font-size:14px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+  <div id="title" class="panel"><b>25. The Gulliver's Travel</b><small>By John Tulskitype</small></div>
+  <div id="stats" class="panel">
+    <div><b>Fluorender</b> · <span id="level">Lv. 1</span> · <span id="class">Gigantic Samaritan</span></div>
+    <div class="label">Health</div><div class="bar"><div id="hpFill" class="fill"></div></div>
+    <div class="label">Experience</div><div class="bar"><div id="xpFill" class="fill"></div></div>
+    <div style="font-size:12px">HP <span id="hpText">100/100</span> · XP <span id="xpText">0/100</span> · Gold <span id="goldText">0</span></div>
+  </div>
+  <div id="quest" class="panel">
+    <h3>Main Quest</h3><p id="questText">Awaken in Manhattan Village and speak to a villager.</p>
+    <p><b>Objective:</b> <span id="objective">Find the villagers.</span></p>
+  </div>
+  <div id="notice" class="panel">WASD move · Mouse camera · Shift sprint · Space jump · E interact · Left Click attack · V camera</div>
+  <div id="crosshair">+</div>
+  <div id="controls" class="panel">
+    <b>Controls</b><br>
+    WASD = move · Shift = sprint · Space = jump · E = interact<br>
+    Left Mouse = attack · V = third/first person · I = inventory · K = skills · L = story
+  </div>
+  <div id="buttons">
+    <button onclick="togglePanel('inventory')">Inventory [I]</button>
+    <button onclick="togglePanel('skills')">Skill Tree [K]</button>
+    <button onclick="togglePanel('story')">Full Story [L]</button>
+    <button onclick="togglePause()">Pause</button>
+  </div>
+  <div id="message" class="panel"></div>
+  <div id="dialogue" class="panel">
+    <h3 id="dialogueName"></h3><p id="dialogueText"></p><br>
+    <button onclick="closeDialogue()">Close</button>
+  </div>
+  <div id="story" class="panel">
+    <h2>📖 The Gulliver's Travel — Full Story</h2>
+    <div id="storyText"></div><br><button onclick="togglePanel('story')">Close</button>
+  </div>
+  <div id="inventory" class="panel">
+    <h2>🎒 Inventory & Equipment</h2>
+    <div id="inventoryGrid" class="grid"></div><br>
+    <button onclick="togglePanel('inventory')">Close</button>
+  </div>
+  <div id="skills" class="panel">
+    <h2>⭐ Progression & Skill Tree</h2>
+    <div id="skillGrid" class="grid"></div><br>
+    <button onclick="togglePanel('skills')">Close</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+/* ============================================================
+   25. THE GULLIVER'S TRAVEL
+   Complete single-file HTML / CSS / JavaScript 3D RPG
+   ============================================================ */
+
+const STORY = `The Gulliver’s Travel
+
+By John Tulskitype
+
+Once upon a time in a fullest sea ocean in this world there live a gigantic man named Fluorender suddenly when the ocean waves push him in a village land in that night and on a second day when Fluorender woke up in the morning day some of the people that there is gigantic man over them all of the knights rail him over by the village and few of people in village of Manhattan said what is this gigantic man doing for our village. Fluorender the giant man said I’m just ever helping you in all your problems so I’m just a gigantic man even if it’s hard I tried to help but few of them they don’t know what would do by gigantic man whose Fluorender is that people and few said, liar! You a gigantic man mean of us your only obtain to demolished our lives and destroyed our village, Fluorender said no, you can’t ever been do that because I’m the one who help but people don’t think of him he’s savior and the best people want to become independent and to reject him first suddenly when the Fire devil named Maha Vlanca in that night when Fluorender is on the sea stayed at night Maha Vlanca even do is to make a Flamethrower to kill people despite innocent people make injuries and casualties…. The third day arise people reflect their minds in a morning when Maha Vlanca is now escape in last night they don’t know that people already suffering without Fluorender with all his passions in helping then it put from hindrances people cry and so much dumb in consequences people said I Fluorender the giant only help us to kill the Stranger enemy so there's no result happen in few of them survived and died when Fluorender heard him when he’s in sea he walk in the village and Fluorender said to the people what happens why you’re arguing people said were so much to repent in life if you’re there Fluorender there’s no already deaths and casualties in our village. So when the people and knights understand he must been a rescuer and don’t hesitate and doubted to Fluorender’s advice. Knights give a wealthy money and Fluorender said thanks, people and knights said to him be sure if I give, we give you that money your seriously find the murder/killer who don’t have conscience in our lives. Then as long as when it is the end of the story. Fluorender wanna search the enemy said by people and knights when Fluorender found it on sea he said, Aha! Dare you killed people and when he is that person/stranger he said to him I’m Maha Vlanca when he caught it by Fluorenderhe said, Hey! You Maha Vlanca you lied us you don’t help but do is to kill now the punishments to you is to put on jail forever as a curse for indirect conscience. So Fluorender is a hero when people and knights happy when he caught already a murder named Maha Vlanca. He is now grounded to be a corporal punishments to spank him in the body. Fluorender a giant win he’s persuading in help. He became gigantic samaritan when people said goodbye. In saving Fluorender now go to sea the End of the story.
+
+Moral Lesson: Even if you help morally like giant/small or whatsoever listening is the simple way to save in danger so people learned a lot with Fluorender he saved already with his passionate help.`;
+
+document.getElementById('storyText').textContent = STORY;
+
+/* ---------- GAME STATE ---------- */
+const state = {
+  level:1, xp:0, xpNeed:100, hp:100, maxHp:100, gold:0,
+  attack:16, defense:2, speed:7, cameraMode:'third',
+  paused:false, quest:0, objective:'Find the villagers.',
+  inventory:[
+    {name:'Giant Fist',type:'Weapon',qty:1,desc:'Fluorender’s natural weapon.'},
+    {name:'Village Map',type:'Quest Item',qty:1,desc:'A map of Manhattan Village.'},
+    {name:'Sea Bread',type:'Food',qty:3,desc:'Restores 20 HP.'},
+    {name:'Knight Token',type:'Key Item',qty:0,desc:'Proof of the knights’ trust.'}
+  ],
+  skills:{
+    giantStrength:false, heroicGuard:false, seaStride:false,
+    inspiration:false, giantSamaritan:false
+  }
+};
+const keys={};
+let canAttack=true, dialogueOpen=false;
+const enemies=[], npcs=[], pickups=[];
+
+/* ---------- THREE.JS ---------- */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x071522);
+scene.fog = new THREE.Fog(0x071522,70,240);
+
+const camera = new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,700);
+camera.position.set(0,8,18);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+document.getElementById('game').appendChild(renderer.domElement);
+
+const hemi = new THREE.HemisphereLight(0x9cc8ff,0x17230f,1.5);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1cf,2.2);
+sun.position.set(60,90,30); sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048); scene.add(sun);
+
+const world = new THREE.Group(); scene.add(world);
+const clock = new THREE.Clock();
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2(0,0);
+
+/* ---------- HELPERS ---------- */
+function mat(color,rough=0.8){return new THREE.MeshStandardMaterial({color,roughness:rough});}
+function box(name,x,y,z,sx,sy,sz,color,group=world){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),mat(color));
+  m.name=name;m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;group.add(m);return m;
+}
+function cyl(name,x,y,z,r,h,color,group=world){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,16),mat(color));
+  m.name=name;m.position.set(x,y,z);m.castShadow=true;group.add(m);return m;
+}
+function sphere(name,x,y,z,r,color,group=world){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,16),mat(color));
+  m.name=name;m.position.set(x,y,z);m.castShadow=true;group.add(m);return m;
+}
+
+/* ---------- WORLD / MAP ---------- */
+const ground=box('Island',0,-1,0,220,2,220,0x375c36);
+const beach=box('Beach',0,-.4,0,190,1,190,0xbca875);
+const sea=box('Ocean',0,-1.1,0,400,.5,400,0x174b73);
+sea.position.y=-1.45;
+
+for(let i=0;i<80;i++){
+  const x=(Math.random()-.5)*180,z=(Math.random()-.5)*180;
+  if(Math.abs(x)<35 && Math.abs(z)<35) continue;
+  const h=2+Math.random()*8;
+  cyl('Tree',x,h/2-0.1,z,.7,h*.65,0x5b3b23);
+  sphere('Leaves',x,h+1,z,2.2,0x1e6336);
+}
+
+/* village buildings */
+for(let i=0;i<8;i++){
+  const x=-25+(i%4)*17, z=-18+Math.floor(i/4)*18;
+  box('House',x,3,z,11,6,10,0x8b6244);
+  const roof=box('Roof',x,6.7,z,12,1.8,11,0x63333a); roof.rotation.y=Math.PI/4;
+  box('Door',x,1.4,z-5.05,2,2.8,.25,0x2b1d16);
+}
+const townSquare=box('Village Square',0,.05,0,45,.1,40,0xcbb889);
+
+/* dock / sea area */
+box('Dock',0,.7,42,16,1,55,0x6d472c);
+for(let z=18;z<70;z+=6) box('DockPost',-7,1.7,z,1,4,1,0x51321f);
+
+/* sign */
+box('Sign',0,2,-27,7,4,.5,0x55351f);
+const signCanvas=document.createElement('canvas');signCanvas.width=512;signCanvas.height=128;
+const sc=signCanvas.getContext('2d');sc.fillStyle='#ffe4a3';sc.font='bold 52px Arial';sc.textAlign='center';sc.fillText('MANHATTAN VILLAGE',256,75);
+const signTex=new THREE.CanvasTexture(signCanvas);
+world.getObjectByName('Sign').material.map=signTex;world.getObjectByName('Sign').material.needsUpdate=true;
+
+/* ---------- PLAYER ---------- */
+const player=new THREE.Group(); player.position.set(0,1.1,12); scene.add(player);
+const body=box('FluorenderBody',0,1.5,0,2.1,3.1,1.5,0x3156a5,player);
+const head=sphere('FluorenderHead',0,3.7,0,1.15,0xe5b18a,player);
+const armL=box('ArmL',-1.45,1.7,0,.65,2.8,.7,0x3156a5,player);
+const armR=box('ArmR',1.45,1.7,0,.65,2.8,.7,0x3156a5,player);
+const legL=box('LegL',-.55,-.15,0,.75,2.2,.8,0x202d4e,player);
+const legR=box('LegR',.55,-.15,0,.75,2.2,.8,0x202d4e,player);
+player.traverse(o=>{if(o.isMesh){o.castShadow=true;o.userData.isPlayer=true}});
+
+/* ---------- NPCS ---------- */
+function createNPC(name,x,z,color,role){
+  const g=new THREE.Group();g.position.set(x,1,z);
+  g.userData={name,role};
+  cyl('body',0,1.2,0,.7,2.3,color,g);
+  sphere('head',0,2.9,0,.65,0xe4b18a,g);
+  box('hat',0,3.55,0,1.2,.35,1.2,role==='Knight'?0xb5b9c4:0x51351f,g);
+  scene.add(g);npcs.push(g);return g;
+}
+createNPC('Village Elder',-8,-8,0x6b4c2d,'Elder');
+createNPC('Villager A',10,-7,0x3f7c5c,'Villager');
+createNPC('Villager B',-15,9,0x8b3f62,'Villager');
+createNPC('Knight Captain',16,8,0x777b85,'Knight');
+createNPC('Dock Villager',4,28,0x8b6735,'Villager');
+
+/* ---------- ENEMIES ---------- */
+function createEnemy(name,x,z,boss=false){
+  const g=new THREE.Group();g.position.set(x,1,z);
+  g.userData={name,hp:boss?150:45,maxHp:boss?150:45,boss};
+  const c=boss?0x8b1515:0x532020;
+  cyl('enemyBody',0,1.2,0,boss?1.1:.65,2.4,c,g);
+  sphere('enemyHead',0,3,0,boss?1:.62,0xd26a45,g);
+  if(boss){
+    const flame=sphere('flame',0,4.5,0,.7,0xff5a16,g);
+    flame.userData.flame=true;
+  }
+  scene.add(g); enemies.push(g); return g;
+}
+createEnemy('Sea Raider',-55,55,false);
+createEnemy('Sea Raider',55,58,false);
+createEnemy('Sea Raider',-62,20,false);
+createEnemy('Sea Raider',62,24,false);
+
+/* Maha Vlanca boss waits offshore */
+const maha=createEnemy('Maha Vlanca',0,78,true); maha.visible=false;
+
+/* ---------- PICKUPS ---------- */
+function pickup(name,x,z,color,action){
+  const p=sphere(name,x,1,z,.55,color);p.userData={pickup:true,name,action};pickups.push(p);return p;
+}
+pickup('Sea Bread',-12,5,0xffd37d,()=>{state.inventory.find(i=>i.name==='Sea Bread').qty++;showMessage('Picked up Sea Bread.')});
+pickup('Sea Bread',18,-3,0xffd37d,()=>{state.inventory.find(i=>i.name==='Sea Bread').qty++;showMessage('Picked up Sea Bread.')});
+
+/* ---------- INPUT ---------- */
+addEventListener('keydown',e=>{
+  keys[e.code]=true;
+  if(e.code==='KeyI')togglePanel('inventory');
+  if(e.code==='KeyK')togglePanel('skills');
+  if(e.code==='KeyL')togglePanel('story');
+  if(e.code==='KeyV')switchCamera();
+  if(e.code==='KeyE')interact();
+  if(e.code==='Space' && !state.paused) jump();
+  if(e.code==='Escape'){closeDialogue();closeAllPanels()}
+});
+addEventListener('keyup',e=>keys[e.code]=false);
+renderer.domElement.addEventListener('mousedown',e=>{if(e.button===0 && !state.paused && !dialogueOpen) attack()});
+let dragging=false,lastX=0,lastY=0,yaw=0.3,pitch=.18;
+renderer.domElement.addEventListener('mousedown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY});
+addEventListener('mouseup',()=>dragging=false);
+addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  yaw-=(e.clientX-lastX)*.006; pitch-=(e.clientY-lastY)*.004;
+  pitch=Math.max(-.5,Math.min(.75,pitch));lastX=e.clientX;lastY=e.clientY;
+});
+renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+
+/* ---------- MOVEMENT ---------- */
+let velY=0,onGround=true;
+function jump(){if(onGround){velY=10;onGround=false}}
+function movePlayer(dt){
+  if(dialogueOpen)return;
+  const f=new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
+  const r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  let dir=new THREE.Vector3();
+  if(keys.KeyW)dir.add(f.clone().multiplyScalar(-1));
+  if(keys.KeyS)dir.add(f);
+  if(keys.KeyA)dir.add(r.clone().multiplyScalar(-1));
+  if(keys.KeyD)dir.add(r);
+  if(dir.lengthSq()>0){
+    dir.normalize();
+    const sp=keys.ShiftLeft||keys.ShiftRight?state.speed*1.65:state.speed;
+    player.position.addScaledVector(dir,sp*dt);
+    player.rotation.y=Math.atan2(dir.x,dir.z);
+  }
+  velY-=25*dt; player.position.y+=velY*dt;
+  if(player.position.y<=1.1){player.position.y=1.1;velY=0;onGround=true}
+  player.position.x=Math.max(-95,Math.min(95,player.position.x));
+  player.position.z=Math.max(-95,Math.min(95,player.position.z));
+}
+
+/* ---------- CAMERA ---------- */
+function switchCamera(){state.cameraMode=state.cameraMode==='third'?'first':'third';showMessage(state.cameraMode==='third'?'Third-person camera':'First-person camera')}
+function updateCamera(){
+  if(state.cameraMode==='first'){
+    const eye=player.position.clone().add(new THREE.Vector3(0,3.5,0));
+    camera.position.lerp(eye,.18);
+    camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
+  }else{
+    const target=player.position.clone().add(new THREE.Vector3(0,2.2,0));
+    const dist=13;
+    const offset=new THREE.Vector3(Math.sin(yaw)*dist,6+pitch*7,Math.cos(yaw)*dist);
+    camera.position.lerp(target.clone().add(offset),.12);
+    camera.lookAt(target);
+  }
+}
+
+/* ---------- COMBAT ---------- */
+function attack(){
+  if(!canAttack)return;
+  canAttack=false;setTimeout(()=>canAttack=true,350);
+  const range=state.skills.giantStrength?8:6;
+  let best=null,bestD=999;
+  enemies.forEach(e=>{
+    if(!e.visible)return;
+    const d=e.position.distanceTo(player.position);
+    if(d<range && d<bestD){best=e;bestD=d}
+  });
+  if(!best){showMessage('Attack missed. Move closer to an enemy.');return}
+  const dmg=state.attack+(state.skills.giantStrength?10:0);
+  best.userData.hp-=dmg;
+  showMessage('Fluorender attacks '+best.userData.name+' for '+dmg+' damage!');
+  best.scale.set(1.15,.9,1.15);setTimeout(()=>best.scale.set(1,1,1),120);
+  if(best.userData.hp<=0)defeatEnemy(best);
+}
+function defeatEnemy(e){
+  if(e.userData.boss){
+    state.gold+=500;gainXP(150);
+    e.visible=false;
+    setQuest(5,'Story complete! Return to the village or read the Moral Lesson.','Return to Manhattan Village.');
+    state.inventory.find(i=>i.name==='Knight Token').qty=1;
+    showDialogue('Fluorender','Hey! You Maha Vlanca! You lied to us—you don’t help, but kill. Now your punishment is to be put in jail forever. The village is safe.');
+  }else{
+    state.gold+=25;gainXP(30);e.visible=false;
+  }
+}
+function enemyAI(dt){
+  enemies.forEach(e=>{
+    if(!e.visible)return;
+    const d=e.position.distanceTo(player.position);
+    if(d<30){
+      const dir=player.position.clone().sub(e.position);dir.y=0;
+      if(dir.length()>4){dir.normalize();e.position.addScaledVector(dir,dt*(e.userData.boss?3:2))}
+      else if(Math.random()<dt*.7){
+        state.hp=Math.max(0,state.hp-(e.userData.boss?9:5)+state.defense);
+        if(state.hp<=0){state.hp=state.maxHp;player.position.set(0,1.1,12);showMessage('Fluorender was defeated and returned to the village.')}
+      }
+    }
+  });
+}
+
+/* ---------- QUESTS ---------- */
+const quests=[
+ ['Find the villagers.','Find the villagers.'],
+ ['Earn the village’s trust.','Talk to the Elder and Knight Captain.'],
+ ['Investigate the night attack.','Reach the dock and inspect the sea.'],
+ ['Find Maha Vlanca.','Travel to the offshore area and reveal the boss.'],
+ ['Defeat Maha Vlanca.','Defeat Maha Vlanca and protect the village.'],
+ ['Story complete!','Return to Manhattan Village.']
+];
+function setQuest(i,text,obj){
+  state.quest=i;state.objective=obj||quests[i][1];
+  document.getElementById('questText').textContent=text;
+  document.getElementById('objective').textContent=state.objective;
+}
+function interact(){
+  let nearest=null,d=999;
+  npcs.forEach(n=>{const dd=n.position.distanceTo(player.position);if(dd<5&&dd<d){d=dd;nearest=n}});
+  if(nearest){talkTo(nearest);return}
+  if(state.quest===2 && player.position.z>35){setQuest(3,'You found evidence of the attack. Search the sea for Maha Vlanca.');gainXP(40);showMessage('Quest updated: Find Maha Vlanca.');return}
+  if(state.quest===3 && player.position.z>60){maha.visible=true;setQuest(4,'Maha Vlanca has appeared! Defeat the Fire Devil.');showMessage('BOSS ENCOUNTER: Maha Vlanca');return}
+  pickups.forEach(p=>{
+    if(p.visible && p.position.distanceTo(player.position)<3){p.userData.action();p.visible=false}
+  });
+}
+function talkTo(n){
+  if(n.userData.name==='Village Elder'){
+    if(state.quest===0){setQuest(1,'The villagers begin to trust the gigantic stranger.','Talk to the Knight Captain.');gainXP(30)}
+    showDialogue('Village Elder','We once doubted you, Fluorender. If you truly wish to help, speak with our knights and prove your intentions.');
+  }else if(n.userData.name==='Knight Captain'){
+    if(state.quest===1){setQuest(2,'The knights ask you to investigate the attack.','Reach the dock and inspect the sea.');state.gold+=100;state.inventory.find(i=>i.name==='Knight Token').qty=1;gainXP(60)}
+    showDialogue('Knight Captain','We give you this wealthy reward. Please find the murderer and killer who has no conscience. Protect our people.');
+  }else{
+    showDialogue(n.userData.name,'The villagers remember the night of the Fire Devil. They are grateful that Fluorender came back to help.');
+  }
+}
+
+/* ---------- XP / SKILLS ---------- */
+function gainXP(x){
+  state.xp+=x;
+  while(state.xp>=state.xpNeed){
+    state.xp-=state.xpNeed;state.level++;state.xpNeed=Math.floor(state.xpNeed*1.25);
+    state.maxHp+=20;state.hp=state.maxHp;state.attack+=3;state.defense+=1;
+    showMessage('LEVEL UP! Fluorender is now Level '+state.level+'!');
+  }
+}
+const skillDefs=[
+ ['giantStrength','Giant Strength','Increase attack range and damage.',60],
+ ['heroicGuard','Heroic Guard','Increase defense by 3.',80],
+ ['seaStride','Sea Stride','Move faster near the ocean.',100],
+ ['inspiration','Passionate Help','Restore 15 HP when completing a quest.',120],
+ ['giantSamaritan','Gigantic Samaritan','Ultimate: +10 attack and +30 max HP.',180]
+];
+function buySkill(key,cost){
+  if(state.skills[key])return;
+  if(state.gold<cost){showMessage('Not enough gold.');return}
+  state.gold-=cost;state.skills[key]=true;
+  if(key==='heroicGuard')state.defense+=3;
+  if(key==='seaStride')state.speed+=2;
+  if(key==='giantSamaritan'){state.attack+=10;state.maxHp+=30;state.hp=state.maxHp}
+  if(key==='inspiration')state.hp=Math.min(state.maxHp,state.hp+15);
+  renderPanels();showMessage('Skill unlocked!');
+}
+function renderPanels(){
+  document.getElementById('level').textContent='Lv. '+state.level;
+  document.getElementById('hpText').textContent=Math.ceil(state.hp)+'/'+state.maxHp;
+  document.getElementById('xpText').textContent=state.xp+'/'+state.xpNeed;
+  document.getElementById('goldText').textContent=state.gold;
+  document.getElementById('hpFill').style.width=(state.hp/state.maxHp*100)+'%';
+  document.getElementById('xpFill').style.width=(state.xp/state.xpNeed*100)+'%';
+  const ig=document.getElementById('inventoryGrid');ig.innerHTML='';
+  state.inventory.forEach(i=>{const d=document.createElement('div');d.className='item';d.innerHTML='<b>'+i.name+'</b><span>'+i.type+' · x'+i.qty+'</span><br><small>'+i.desc+'</small>';ig.appendChild(d)});
+  const sg=document.getElementById('skillGrid');sg.innerHTML='';
+  skillDefs.forEach(s=>{const d=document.createElement('div');d.className='skill';d.innerHTML='<b>'+s[1]+'</b><small>'+s[2]+'</small><br><small>Cost: '+s[3]+' gold</small><br><button '+(state.skills[s[0]]?'disabled':'')+' onclick="buySkill(\''+s[0]+'\','+s[3]+')">'+(state.skills[s[0]]?'Unlocked':'Unlock')+'</button>';sg.appendChild(d)});
+}
+function togglePanel(id){
+  const el=document.getElementById(id);const show=getComputedStyle(el).display==='none';
+  closeAllPanels();if(show)el.style.display='block';
+}
+function closeAllPanels(){['story','inventory','skills'].forEach(id=>document.getElementById(id).style.display='none')}
+function togglePause(){state.paused=!state.paused;showMessage(state.paused?'Game paused':'Game resumed')}
+function closeDialogue(){dialogueOpen=false;document.getElementById('dialogue').style.display='none'}
+function showDialogue(name,text){dialogueOpen=true;document.getElementById('dialogueName').textContent=name;document.getElementById('dialogueText').textContent=text;document.getElementById('dialogue').style.display='block'}
+let msgTimer;
+function showMessage(t){const el=document.getElementById('message');el.textContent=t;el.style.opacity=1;clearTimeout(msgTimer);msgTimer=setTimeout(()=>el.style.opacity=0,2500)}
+
+/* ---------- SEA / EFFECTS ---------- */
+const waves=[];
+for(let i=0;i<24;i++){
+  const w=new THREE.Mesh(new THREE.TorusGeometry(2.5,.08,8,24),new THREE.MeshBasicMaterial({color:0x7fcfff,transparent:true,opacity:.35}));
+  w.rotation.x=Math.PI/2;w.position.set((Math.random()-.5)*160,-1.15,(Math.random()-.5)*160);scene.add(w);waves.push(w);
+}
+
+/* ---------- RESIZE ---------- */
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
+});
+
+/* ---------- GAME LOOP ---------- */
+let elapsed=0;
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;
+  if(!state.paused){
+    movePlayer(dt);enemyAI(dt);updateCamera();
+    waves.forEach((w,i)=>{w.scale.setScalar(1+Math.sin(elapsed*1.5+i)*.08);w.rotation.z=elapsed*.08+i});
+    enemies.forEach(e=>{if(e.visible&&e.userData.boss){const f=e.getObjectByName('flame');if(f)f.scale.setScalar(1+Math.sin(elapsed*12)*.12)}});
+  }
+  renderPanels();
+  renderer.render(scene,camera);
+}
+renderPanels();
+showMessage('Welcome to Manhattan Village, Fluorender!');
+animate();
+
+/* ---------- SIMPLE SAVE / LOAD ---------- */
+addEventListener('keydown',e=>{
+  if(e.code==='F5'){e.preventDefault();localStorage.setItem('gulliverSave',JSON.stringify(state));showMessage('Game saved.')}
+  if(e.code==='F9'){
+    const s=localStorage.getItem('gulliverSave');
+    if(s){Object.assign(state,JSON.parse(s));renderPanels();showMessage('Game loaded.')}
+  }
+});
+</script>
+</body>
+</html>
